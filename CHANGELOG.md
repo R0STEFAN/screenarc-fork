@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/tamnguyenvan/screenarc/compare/v1.2.1...v1.2.2) (2025-12-23)
+
+
+### Bug Fixes
+
+* **export:** Resolve hung export process by adding timeout to seekPromise ([1fbdee9](https://github.com/tamnguyenvan/screenarc/commit/1fbdee9f6d48018285bc6c0fcf173eb75d18eb2d))
+
 ## [1.2.1](https://github.com/tamnguyenvan/screenarc/compare/v1.2.0...v1.2.1) (2025-10-17)
 
 
