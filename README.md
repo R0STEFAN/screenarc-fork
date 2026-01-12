@@ -23,7 +23,8 @@ Perfect for developers, educators, and content creators who want to produce stun
 
 ## 🎥 Demo
 
-<video src="docs/assets/screenarc-demo.mp4" width="320" height="240" controls></video>
+![Demo Video](https://github.com/extencil/screenarc/blob/main/docs/assets/screenarc-demo.gif?raw=true)
+
 
 ---
 
