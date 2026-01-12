@@ -23,8 +23,11 @@ Perfect for developers, educators, and content creators who want to produce stun
 
 ## 🎥 Demo
 
+<!-- Example comment. For centralization, keep the original repository.
 ![Demo Video](https://github.com/extencil/screenarc/blob/main/docs/assets/screenarc-demo.gif?raw=true)
+-->
 
+![Demo Video](https://github.com/tamnguyenvan/screenarc/blob/main/docs/assets/screenarc-demo.gif?raw=true)
 
 ---
 
