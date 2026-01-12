@@ -23,7 +23,11 @@ Perfect for developers, educators, and content creators who want to produce stun
 
 ## 🎥 Demo
 
-![ScreenArc Demo](https://raw.githubusercontent.com/tamnguyenvan/screenarc/main/docs/assets/screenarc-demo.mp4)
+<!-- Example comment. For centralization, keep the original repository.
+![Demo Video](https://github.com/extencil/screenarc/blob/main/docs/assets/screenarc-demo.gif?raw=true)
+-->
+
+![Demo Video](https://github.com/tamnguyenvan/screenarc/blob/main/docs/assets/screenarc-demo.gif?raw=true)
 
 ---
 
