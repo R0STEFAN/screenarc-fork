@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import { appState } from '../state'
 import { getFFmpegPath, calculateExportDimensions } from '../lib/utils'
+import { execSync, spawnSync } from 'node:child_process'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
 
 const FFMPEG_PATH = getFFmpegPath()
@@ -44,6 +45,7 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
   const { resolution, fps, format } = exportSettings
   const { width: outputWidth, height: outputHeight } = calculateExportDimensions(resolution, projectState.aspectRatio)
 
+
   const ffmpegArgs = [
     '-y',
     '-f',
@@ -59,8 +61,53 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     '-i',
     '-',
   ]
+
+  // --- Hardware acceleration auto-detect with real encoder check ---
+  // --- Detect GPU type for encoder selection (Windows only) ---
+  function detectGpuType() {
+    if (process.platform === 'win32') {
+      try {
+        const res = spawnSync('wmic', ['path', 'win32_VideoController', 'get', 'name'], { encoding: 'utf-8' })
+        const out = res.stdout.toLowerCase()
+        if (out.includes('nvidia')) return 'nvidia'
+        if (out.includes('intel')) return 'intel'
+        if (out.includes('amd') || out.includes('radeon')) return 'amd'
+      } catch {}
+    }
+    return ''
+  }
+
+  function encoderAvailable(encoder: string) {
+    try {
+      const res = spawnSync(FFMPEG_PATH, ['-hide_banner', '-h', `encoder=${encoder}`], { encoding: 'utf-8' })
+      return res.status === 0 && !/not available|Unknown encoder|No such encoder/i.test(res.stdout + res.stderr)
+    } catch {
+      return false
+    }
+  }
+
+  let hwType = ''
+  let hwAccelArgs: string[] = []
   if (format === 'mp4') {
-    ffmpegArgs.push('-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p')
+    const gpuType = detectGpuType()
+    if (gpuType === 'nvidia' && encoderAvailable('h264_nvenc')) {
+      hwType = 'nvidia'
+      hwAccelArgs = ['-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p']
+    } else if (gpuType === 'intel' && encoderAvailable('h264_qsv')) {
+      hwType = 'intel'
+      hwAccelArgs = ['-c:v', 'h264_qsv', '-pix_fmt', 'yuv420p']
+    } else if (gpuType === 'amd' && encoderAvailable('h264_amf')) {
+      hwType = 'amd'
+      hwAccelArgs = ['-c:v', 'h264_amf', '-pix_fmt', 'yuv420p']
+    }
+
+    if (hwAccelArgs.length > 0) {
+      ffmpegArgs.push(...hwAccelArgs)
+      log.info(`[ExportManager] Using hardware acceleration: ${hwType}`)
+    } else {
+      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p')
+      log.info('[ExportManager] Using software encoding (libx264)')
+    }
   } else {
     ffmpegArgs.push('-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse')
   }

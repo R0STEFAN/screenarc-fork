@@ -105,7 +105,7 @@ export const DEFAULTS = {
     // Camera movement smoothing parameters
     MOVEMENT: {
       DEAD_ZONE: 10, // pixels - minimum movement threshold before camera follows
-      SMOOTHING_FACTOR: 0.03, // Lower value = smoother/slower response
+      SMOOTHING_FACTOR: 0.07, // Lower value = smoother/slower response (default 0.03, faster = 0.07)
       SMOOTHING_WINDOW: 0.5, // seconds - time window for smoothing calculation
     },
   },

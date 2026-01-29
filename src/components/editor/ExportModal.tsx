@@ -28,7 +28,12 @@ interface ExportModalProps {
 const generateFilename = (format: 'mp4' | 'gif') => {
   const now = new Date()
   const timestamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '-').slice(0, 19)
-  return `ScreenArc-${timestamp}.${format}`
+  let filename = `ScreenArc-${timestamp}.${format}`
+  // Fix slashes for Windows
+  if (typeof window !== 'undefined' && window.process && window.process.platform === 'win32') {
+    filename = filename.replaceAll('/', '\\')
+  }
+  return filename
 }
 
 // --- Sub-components for different views ---
@@ -95,9 +100,14 @@ const SettingsView = ({
   useEffect(() => {
     const setDefaultPath = async () => {
       try {
-        const homePath = await window.electronAPI.getPath('home')
+        let homePath = await window.electronAPI.getPath('home')
         const filename = generateFilename(settings.format)
-        setOutputPath(`${homePath}/${filename}`)
+        if (typeof window !== 'undefined' && window.process && window.process.platform === 'win32') {
+          homePath = homePath.replaceAll('/', '\\')
+          setOutputPath(`${homePath}\\${filename}`)
+        } else {
+          setOutputPath(`${homePath}/${filename}`)
+        }
       } catch (error) {
         console.error('Failed to get home path, falling back to relative path.', error)
         setOutputPath(generateFilename(settings.format))
@@ -197,7 +207,13 @@ const SettingsView = ({
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={() => onStartExport(settings, outputPath)} disabled={!outputPath}>
+        <Button onClick={() => {
+          let fixedOutputPath = outputPath
+          if (typeof window !== 'undefined' && window.process && window.process.platform === 'win32') {
+            fixedOutputPath = outputPath.replaceAll('/', '\\')
+          }
+          onStartExport(settings, fixedOutputPath)
+        }} disabled={!outputPath}>
           Start Export
         </Button>
       </div>
