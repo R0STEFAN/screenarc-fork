@@ -102,6 +102,12 @@ export const DEFAULTS = {
       EASING: 'Balanced',
     },
     SCALE_ON_ZOOM_AMOUNT: 0.8,
+    // Camera movement smoothing parameters
+    MOVEMENT: {
+      DEAD_ZONE: 10, // pixels - minimum movement threshold before camera follows
+      SMOOTHING_FACTOR: 0.03, // Lower value = smoother/slower response (was 0.05)
+      SMOOTHING_WINDOW: 0.5, // seconds - time window for smoothing calculation
+    },
   },
   AUDIO: {
     VOLUME: { min: 0, max: 1, step: 0.01, defaultValue: 1 },

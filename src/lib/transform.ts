@@ -1,4 +1,5 @@
 import { EASING_MAP } from './easing'
+import { DEFAULTS } from './constants'
 import { ZoomRegion, MetaDataItem } from '../types'
 
 // --- HELPER FUNCTIONS ---
@@ -35,17 +36,19 @@ export const findLastMetadataIndex = (metadata: MetaDataItem[], currentTime: num
 /**
  * Calculates a smoothed mouse position at a given time using Exponential Moving Average (EMA).
  * This prevents jerky panning by smoothing out rapid mouse movements.
+ * Implements a dead zone to ignore small movements and improve stability.
  */
 function getSmoothedMousePosition(
   metadata: MetaDataItem[],
   targetTime: number,
-  smoothingFactor = 0.05, // Reduced from 0.1 for smoother movement
+  smoothingFactor = DEFAULTS.CAMERA.MOVEMENT.SMOOTHING_FACTOR,
+  deadZone = DEFAULTS.CAMERA.MOVEMENT.DEAD_ZONE,
 ): { x: number; y: number } | null {
   const endIndex = findLastMetadataIndex(metadata, targetTime)
   if (endIndex < 0) return null
 
   // Start smoothing from a bit before the target time to build up the average
-  const startTime = Math.max(0, targetTime - 0.5)
+  const startTime = Math.max(0, targetTime - DEFAULTS.CAMERA.MOVEMENT.SMOOTHING_WINDOW)
   let startIndex = findLastMetadataIndex(metadata, startTime)
   if (startIndex < 0) startIndex = 0
 
@@ -54,9 +57,30 @@ function getSmoothedMousePosition(
   let smoothedX = metadata[startIndex].x
   let smoothedY = metadata[startIndex].y
 
+  // Track the last significant position for dead zone calculation
+  let lastSignificantX = smoothedX
+  let lastSignificantY = smoothedY
+
   for (let i = startIndex + 1; i <= endIndex; i++) {
-    smoothedX = lerp(smoothedX, metadata[i].x, smoothingFactor)
-    smoothedY = lerp(smoothedY, metadata[i].y, smoothingFactor)
+    const currentX = metadata[i].x
+    const currentY = metadata[i].y
+
+    // Calculate movement delta in pixels
+    const deltaX = currentX - lastSignificantX
+    const deltaY = currentY - lastSignificantY
+    const movementDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+    // Only update if movement exceeds dead zone
+    if (movementDistance > deadZone) {
+      smoothedX = lerp(smoothedX, currentX, smoothingFactor)
+      smoothedY = lerp(smoothedY, currentY, smoothingFactor)
+      lastSignificantX = currentX
+      lastSignificantY = currentY
+    } else {
+      // Still apply minimal smoothing to maintain continuity
+      smoothedX = lerp(smoothedX, currentX, smoothingFactor * 0.3)
+      smoothedY = lerp(smoothedY, currentY, smoothingFactor * 0.3)
+    }
   }
 
   // Final interpolation for sub-frame accuracy
