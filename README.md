@@ -30,6 +30,14 @@ Perfect for developers, educators, and content creators who want to produce stun
 
 ---
 
+## 🛠 Fixes & Improvements
+
+- 🔊 Fixed audio recording on Windows.
+- 🎯 Resolved audio and video sync issues.
+- 🖥 Fixed screen scaling so recordings aren’t cropped on smaller displays.
+- 🖱 Eliminated camera stuttering when following the cursor during zoom.
+- 🎥 Improved overall camera movement smoothness.
+
 ## ⭐ Features
 
 - 🎥 **Flexible Capture**: Record your full screen, a specific window, or a custom area with seamless multi-monitor support.
