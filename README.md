@@ -169,7 +169,7 @@ Grab the latest version for your OS from the [**Releases Page**](https://github.
 1.  **Clone the repo:**
     ```bash
     git clone https://github.com/R0STEFAN/screenarc-fork.git
-    cd screenarc
+    cd screenarc-fork
     ```
 2.  **Install dependencies:**
     ```bash
