@@ -216,6 +216,14 @@ export const calculateZoomTransform = (
   else if (currentTime >= zoomInEndTime && currentTime < zoomOutStartTime) {
     currentScale = zoomLevel
     
+    // At the start of phase 2, initialize previousPan to initialPan (end of zoom-in)
+    // This ensures smooth transition without initial jump
+    if (lastPanUpdateTime < zoomInEndTime) {
+      previousPanX = initialPan.tx
+      previousPanY = initialPan.ty
+      lastPanUpdateTime = zoomInEndTime
+    }
+    
     // Smooth interpolation between previous position and target position
     // This creates fluid camera movement without jitter
     const timeDelta = currentTime - lastPanUpdateTime
