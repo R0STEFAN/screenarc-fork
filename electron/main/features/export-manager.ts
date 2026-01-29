@@ -72,7 +72,8 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
   function detectGpuType() {
     if (process.platform === 'win32') {
       try {
-        const res = spawnSync('wmic', ['path', 'win32_VideoController', 'get', 'name'], { encoding: 'utf-8' })
+        // Try PowerShell first (Windows 11+)
+        const res = spawnSync('powershell', ['-Command', 'Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name'], { encoding: 'utf-8' })
         const out = res.stdout.toLowerCase()
         if (out.includes('nvidia')) return 'nvidia'
         if (out.includes('intel')) return 'intel'
