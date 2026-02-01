@@ -78,7 +78,7 @@ const SettingsView = ({
     return Math.max(0, finalDuration)
   }, [duration, cutRegions, speedRegions])
 
-  const handleValueChange = (key: keyof ExportSettings, value: string) => {
+  const handleValueChange = (key: keyof ExportSettings, value: any) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
   }
 
