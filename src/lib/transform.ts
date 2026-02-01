@@ -143,7 +143,7 @@ function getTransformOrigin(targetX: number, targetY: number): { x: number; y: n
 let previousPanX = 0
 let previousPanY = 0
 let lastPanUpdateTime = 0
-const PAN_SMOOTHING_FACTOR = 0.15 // Adjust this value (0-1) to control smoothness. Lower = smoother but slower.
+const PAN_SMOOTHING_FACTOR = 0.1 // 0.1 provides very smooth but responsive movement
 
 export const calculateZoomTransform = (
   currentTime: number,
@@ -161,6 +161,16 @@ export const calculateZoomTransform = (
     translateX: 0,
     translateY: 0,
     transformOrigin: '50% 50%',
+  }
+
+  // If no region or big time jump, reset tracking
+  if (!activeRegion || Math.abs(currentTime - lastPanUpdateTime) > 0.5) {
+     if (activeRegion) {
+        // Just reset to 0 or we could try to re-initialize if we had context
+        // But simply resetting means next frame will "snap" or "converge"
+        previousPanX = 0
+        previousPanY = 0
+     }
   }
 
   if (!activeRegion) return defaultTransform
@@ -198,7 +208,7 @@ export const calculateZoomTransform = (
 
   // --- Determine current transform based on phase ---
 
-  // Phase 1: ZOOM-IN (Smoothly pan towards cursor while zooming in)
+  // Phase 1: ZOOM-IN (Strict interpolation to avoid initial lag)
   if (currentTime >= startTime && currentTime < zoomInEndTime) {
     const t = (EASING_MAP[easing as keyof typeof EASING_MAP] || EASING_MAP.Balanced)(
       (currentTime - startTime) / transitionDuration,
@@ -207,50 +217,81 @@ export const calculateZoomTransform = (
     currentTranslateX = lerp(0, initialPan.tx, t)
     currentTranslateY = lerp(0, initialPan.ty, t)
     
-    // Update tracking for phase 2
+    // Snap our smoother to the current calculation so Phase 2 starts correctly
     previousPanX = currentTranslateX
     previousPanY = currentTranslateY
-    lastPanUpdateTime = currentTime
   }
-  // Phase 2: PAN/HOLD (Fully zoomed in, pan follows smoothed mouse with smooth interpolation)
+  // Phase 2: PAN/HOLD (Apply extra smoothing for fluid camera feeling)
   else if (currentTime >= zoomInEndTime && currentTime < zoomOutStartTime) {
     currentScale = zoomLevel
     
-    // At the start of phase 2, initialize previousPan to initialPan (end of zoom-in)
-    // This ensures smooth transition without initial jump
-    if (lastPanUpdateTime < zoomInEndTime) {
-      previousPanX = initialPan.tx
-      previousPanY = initialPan.ty
-      lastPanUpdateTime = zoomInEndTime
-    }
-    
-    // Smooth interpolation between previous position and target position
-    // This creates fluid camera movement without jitter
+    // Smooth interpolation towards the live target
     const timeDelta = currentTime - lastPanUpdateTime
-    const effectiveSmoothingFactor = Math.min(PAN_SMOOTHING_FACTOR, timeDelta > 0 ? 1 : 0)
-    
-    currentTranslateX = lerp(previousPanX, livePan.tx, effectiveSmoothingFactor)
-    currentTranslateY = lerp(previousPanY, livePan.ty, effectiveSmoothingFactor)
-    
-    // Update for next frame
+    // Normalize smoothing to frame rate roughly (assuming ~60fps if delta is ~0.016)
+    // If delta is 0 (same frame), don't change.
+    const alpha = timeDelta > 0 ? (timeDelta / 0.016) * PAN_SMOOTHING_FACTOR : 0
+    // Clamp alpha
+    const safeAlpha = Math.max(0, Math.min(1, alpha))
+
+    currentTranslateX = lerp(previousPanX, livePan.tx, safeAlpha)
+    currentTranslateY = lerp(previousPanY, livePan.ty, safeAlpha)
+
     previousPanX = currentTranslateX
     previousPanY = currentTranslateY
-    lastPanUpdateTime = currentTime
   }
-  // Phase 3: ZOOM-OUT (No panning, move from final pan position back to center)
+  // Phase 3: ZOOM-OUT (Continue smoothing towards dynamic target)
   else if (currentTime >= zoomOutStartTime && currentTime <= startTime + duration) {
     const t = (EASING_MAP[easing as keyof typeof EASING_MAP] || EASING_MAP.Balanced)(
       (currentTime - zoomOutStartTime) / transitionDuration,
     )
     currentScale = lerp(zoomLevel, 1, t)
-    currentTranslateX = lerp(finalPan.tx, 0, t)
-    currentTranslateY = lerp(finalPan.ty, 0, t)
+
+    let targetTx = 0
+    let targetTy = 0
+
+    if (mode === 'auto' && metadata.length > 0 && recordingGeometry.width > 0) {
+      const liveMousePos = getSmoothedMousePosition(metadata, currentTime)
+      const dynamicPan = calculateBoundedPan(
+        liveMousePos,
+        fixedOrigin,
+        currentScale,
+        recordingGeometry,
+        frameContentDimensions,
+      )
+      
+      // User request optimization: 
+      // First 5% of zoom-out: gradually release cursor tracking (decay from 1.0 to 0.0).
+      // Remaining 95%: pure movement to center (influence is 0).
+      const cursorInfluence = t <= 0.05 ? 1 - (t / 0.05) : 0
+      
+      targetTx = dynamicPan.tx * cursorInfluence
+      targetTy = dynamicPan.ty * cursorInfluence
+    } else {
+      targetTx = lerp(finalPan.tx, 0, t)
+      targetTy = lerp(finalPan.ty, 0, t)
+    }
+
+    // Apply same smoothing as Phase 2 to prevent jump in velocity
+    // But ensure we converge to 0 if target is 0?
+    // Actually, dynamicPan converges to 0. So smoothing towards it is safe.
     
-    // Reset tracking for next zoom region
-    previousPanX = 0
-    previousPanY = 0
-    lastPanUpdateTime = currentTime
+    const timeDelta = currentTime - lastPanUpdateTime
+    const baseAlpha = timeDelta > 0 ? (timeDelta / 0.016) * PAN_SMOOTHING_FACTOR : 0
+    
+    // CRITICAL FIX: As zoom-out finishes (t -> 1), force convergence to the target.
+    // Otherwise, the smoothed value lags behind and causes a jump when the region ends.
+    // Using power 4 keeps smoothing active early on, but snaps firmly at the end.
+    const convergence = Math.pow(t, 4)
+    const fluidAlpha = lerp(Math.max(0, Math.min(1, baseAlpha)), 1, convergence)
+
+    currentTranslateX = lerp(previousPanX, targetTx, fluidAlpha)
+    currentTranslateY = lerp(previousPanY, targetTy, fluidAlpha)
+    
+    previousPanX = currentTranslateX
+    previousPanY = currentTranslateY
   }
+  
+  lastPanUpdateTime = currentTime
 
   return { scale: currentScale, translateX: currentTranslateX, translateY: currentTranslateY, transformOrigin }
 }

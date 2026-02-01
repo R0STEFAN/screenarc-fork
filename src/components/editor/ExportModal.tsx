@@ -11,7 +11,7 @@ import { formatTime } from '../../lib/utils'
 export type ExportSettings = {
   format: 'mp4' | 'gif'
   resolution: '720p' | '1080p' | '2k'
-  fps: 30
+  fps: 30 | 60
   quality: 'low' | 'medium' | 'high'
 }
 
@@ -171,12 +171,16 @@ const SettingsView = ({
             </Select>
           </SettingRow>
           <SettingRow label="FPS">
-            <Select value={String(settings.fps)} disabled>
+            <Select 
+              value={String(settings.fps)} 
+              onValueChange={(value) => handleValueChange('fps', Number(value) as 30 | 60)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="30">30 FPS</SelectItem>
+                <SelectItem value="60">60 FPS</SelectItem>
               </SelectContent>
             </Select>
           </SettingRow>

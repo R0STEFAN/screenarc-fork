@@ -201,6 +201,57 @@ export function RendererPage() {
           })
         }
 
+        // --- SETUP ENCODER (Optimization) ---
+        let videoEncoder: any = null
+        const useHardwareEncoding = exportSettings.format === 'mp4' && 'VideoEncoder' in window
+
+        if (useHardwareEncoding) {
+          log.info('[RendererPage] Initializing hardware encoder (VideoEncoder)')
+          
+          const calculateBitrate = (res: string, qual: string, f: number) => {
+            const baseBitrates: Record<string, number> = {
+              '720p': 5_000_000,
+              '1080p': 8_000_000,
+              '2k': 14_000_000,
+            }
+            const qualityMultipliers: Record<string, number> = {
+              'low': 0.6,
+              'medium': 1.0,
+              'high': 2.0, // Significant boost for high quality
+            }
+            const fpsMultiplier = f >= 60 ? 1.4 : 1.0 // Higher FPS needs more data
+            const codecPenalty = 1.3 // Baseline profile needs ~30% more bitrate than High profile
+
+             const base = baseBitrates[res] || 8_000_000
+             const qualMult = qualityMultipliers[qual] || 1.0
+             
+             return Math.floor(base * qualMult * fpsMultiplier * codecPenalty)
+          }
+
+          const targetBitrate = calculateBitrate(exportSettings.resolution, exportSettings.quality, fps)
+          log.info(`[RendererPage] Configured encoder bitrate: ${(targetBitrate / 1_000_000).toFixed(2)} Mbps`)
+
+          videoEncoder = new (window as any).VideoEncoder({
+            output: (chunk: any) => {
+              const buffer = new ArrayBuffer(chunk.byteLength)
+              chunk.copyTo(buffer)
+              const durationMicro = (totalFrames / fps) * 1e6
+              const progress = Math.min(100, (chunk.timestamp / durationMicro) * 100)
+              window.electronAPI.sendFrameToMain({ frame: Buffer.from(buffer), progress })
+            },
+            error: (e: any) => log.error('[RendererPage] Encoder error:', e),
+          })
+
+          videoEncoder.configure({
+            codec: 'avc1.420033', // H.264 Baseline Profile Level 5.1
+            width: outputWidth,
+            height: outputHeight,
+            bitrate: targetBitrate,
+            framerate: fps,
+            avc: { format: 'annexb' },
+          })
+        }
+
         for (let frame = 0; frame < totalFrames; frame++) {
           const exportTimestamp = frame / fps
           const sourceTimestamp = mapExportTimeToSourceTime(
@@ -212,7 +263,7 @@ export function RendererPage() {
 
           // Create seek promises for both videos
           const mainSeek = seekPromise(video)
-          const webcamSeek = (hasWebcam && webcamVideo) ? seekPromise(webcamVideo) : Promise.resolve()
+          const webcamSeek = hasWebcam && webcamVideo ? seekPromise(webcamVideo) : Promise.resolve()
 
           // Set currentTime for both videos to trigger seeking
           video.currentTime = sourceTimestamp
@@ -235,11 +286,24 @@ export function RendererPage() {
             bgImage,
           )
 
-          // Send the rendered frame to the main process
-          const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
-          const frameBuffer = Buffer.from(imageData.data.buffer)
-          const progress = ((frame + 1) / totalFrames) * 100
-          window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress })
+          if (videoEncoder) {
+            const timestamp = (frame / fps) * 1e6
+            // @ts-ignore
+            const vFrame = new VideoFrame(canvas, { timestamp })
+            const keyFrame = frame % (fps * 2) === 0
+            videoEncoder.encode(vFrame, { keyFrame })
+            vFrame.close()
+          } else {
+            // Send the rendered frame to the main process
+            const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
+            const frameBuffer = Buffer.from(imageData.data.buffer)
+            const progress = ((frame + 1) / totalFrames) * 100
+            window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress })
+          }
+        }
+
+        if (videoEncoder) {
+          await videoEncoder.flush()
         }
 
         // --- 6. FINISH ---

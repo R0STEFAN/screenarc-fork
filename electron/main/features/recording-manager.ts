@@ -260,7 +260,8 @@ function buildFfmpegArgs(
     '-c:v',
     'libx264',
     '-preset',
-    'ultrafast',
+    'ultrafast', // Keep ultrafast for low CPU usage during recording
+    '-crf', '18', // High quality (visually lossless)
     '-pix_fmt',
     'yuv420p',
     screenOut,
@@ -381,13 +382,13 @@ export async function startRecording(options: any) {
   if (webcam) {
     switch (process.platform) {
       case 'linux':
-        baseFfmpegArgs.push('-f', 'v4l2', '-i', `/dev/video${webcam.index}`)
+        baseFfmpegArgs.push('-f', 'v4l2', '-framerate', '30', '-i', `/dev/video${webcam.index}`)
         break
       case 'win32':
-        baseFfmpegArgs.push('-f', 'dshow', '-i', `video=${webcam.deviceLabel}`)
+        baseFfmpegArgs.push('-f', 'dshow', '-framerate', '30', '-i', `video=${webcam.deviceLabel}`)
         break
       case 'darwin':
-        baseFfmpegArgs.push('-f', 'avfoundation', '-i', `${webcam.index}:none`)
+        baseFfmpegArgs.push('-f', 'avfoundation', '-framerate', '30', '-i', `${webcam.index}:none`)
         break
     }
   }
@@ -416,6 +417,7 @@ export async function startRecording(options: any) {
         baseFfmpegArgs.push(
           '-f',
           'x11grab',
+          '-framerate', '60',
           '-draw_mouse',
           '0',
           '-video_size',
@@ -428,6 +430,7 @@ export async function startRecording(options: any) {
         baseFfmpegArgs.push(
           '-f',
           'gdigrab',
+          '-framerate', '60',
           '-draw_mouse',
           '0',
           '-offset_x',
@@ -444,6 +447,7 @@ export async function startRecording(options: any) {
         baseFfmpegArgs.push(
           '-f',
           'avfoundation',
+          '-framerate', '60',
           '-i',
           `${allDisplays.findIndex((d) => d.id === targetDisplay.id) || 0}:none`,
         )
@@ -491,6 +495,7 @@ export async function startRecording(options: any) {
         baseFfmpegArgs.push(
           '-f',
           'x11grab',
+          '-framerate', '60',
           '-draw_mouse',
           '0',
           '-video_size',
@@ -503,6 +508,7 @@ export async function startRecording(options: any) {
         baseFfmpegArgs.push(
           '-f',
           'gdigrab',
+          '-framerate', '60',
           '-draw_mouse',
           '0',
           '-offset_x',
