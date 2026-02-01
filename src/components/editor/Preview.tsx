@@ -13,7 +13,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { formatTime } from '../../lib/utils'
 import { Slider } from '../ui/slider'
 import { Button } from '../ui/button'
-import { drawScene } from '../../lib/renderer'
+import { PixiRenderer } from '../../lib/renderer-gl'
 import { cn } from '../../lib/utils'
 
 export const Preview = memo(
@@ -77,6 +77,7 @@ export const Preview = memo(
 
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
+    const pixiRendererRef = useRef<PixiRenderer | null>(null)
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
     const audioRef = useRef<HTMLAudioElement>(null)
     const animationFrameId = useRef<number>()
@@ -158,33 +159,87 @@ export const Preview = memo(
       const background = frameStyles.background
       if ((background.type === 'image' || background.type === 'wallpaper') && background.imageUrl) {
         const img = new Image()
+        
+        // Setup handlers BEFORE setting src
         img.onload = () => {
           setBgImage(img)
         }
-        const finalUrl = background.imageUrl.startsWith('blob:')
-          ? background.imageUrl
-          : `media://${background.imageUrl}`
+        img.onerror = () => {
+          setBgImage(null)
+        }
+
+        let finalUrl = background.imageUrl
+        
+        // Match logic from RendererPage.tsx: Force media:// for ALL local files to ensure CORS headers
+        // This fixes WebGL tainted canvas issues for both relative wallpapers and absolute user paths.
+        if (finalUrl && !finalUrl.startsWith('blob:') && !finalUrl.startsWith('http')) {
+             if (!finalUrl.startsWith('media://')) {
+                  finalUrl = `media://${finalUrl}`
+             }
+        }
+        
+        // For local dev/production relative paths, ensure no leading slash issues if needed, 
+        // but usually just using the string is fine if it matches public folder structure.
+        
+        // Use anonymous crossOrigin for all external/protocol requests to allow WebGL texture use
+        img.crossOrigin = "anonymous"
+
         img.src = finalUrl
       } else {
         setBgImage(null)
       }
     }, [frameStyles.background])
 
+    useEffect(() => {
+      return () => {
+        if (pixiRendererRef.current && pixiRendererRef.current.app) {
+          try {
+            // Destroy everything to free WebGL context
+            pixiRendererRef.current.app.destroy(true, { children: true, texture: true, baseTexture: true } as any)
+          } catch (e) {
+            console.warn('Failed to destroy Pixi app', e)
+          }
+          pixiRendererRef.current = null
+        }
+      }
+    }, [])
+
     const renderCanvas = useCallback(async () => {
       const canvas = canvasRef.current
       const video = videoRef.current
       const webcamVideo = webcamVideoRef.current
       const state = useEditorStore.getState()
-      const ctx = canvas?.getContext('2d')
-      if (!canvas || !video || !ctx || !state.videoDimensions.width) {
+      
+      if (canvas && !pixiRendererRef.current) {
+         pixiRendererRef.current = new PixiRenderer({
+            canvas,
+            width: canvasDimensions.width,
+            height: canvasDimensions.height
+         })
+      }
+
+      if (!canvas || !video || !pixiRendererRef.current || !state.videoDimensions.width) {
         if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas)
         return
       }
-      await drawScene(ctx, state, video, webcamVideo, video.currentTime, canvas.width, canvas.height, bgImage)
+      try {
+        await pixiRendererRef.current.render(
+          state, 
+          video, 
+          webcamVideo, 
+          video.currentTime, 
+          canvas.width, 
+          canvas.height, 
+          bgImage
+        )
+      } catch (e) {
+        console.error("PIXI RENDER ERROR:", e)
+      }
+
       if (state.isPlaying) {
         animationFrameId.current = requestAnimationFrame(renderCanvas)
       }
-    }, [videoRef, bgImage])
+    }, [videoRef, bgImage, canvasDimensions])
 
     useEffect(() => {
       if (isPlaying) {
@@ -402,8 +457,19 @@ export const Preview = memo(
               ref={canvasRef}
               width={canvasDimensions.width}
               height={canvasDimensions.height}
-              style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
-              className="rounded-lg shadow-2xl"
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '100%', 
+                // When dimensions are known, force the aspect ratio via CSS to prevent squashing/stretching
+                // This ensures that even if the container constraints force a different size, 
+                // the canvas maintains its internal aspect ratio visually.
+                aspectRatio: canvasDimensions.width && canvasDimensions.height 
+                  ? `${canvasDimensions.width}/${canvasDimensions.height}` 
+                  : 'auto',
+                // Important: object-fit contain ensures the canvas content scales correctly within the element box if established by CSS
+                objectFit: 'contain' 
+              }}
+              className="rounded-lg shadow-2xl h-auto w-auto mr-auto ml-auto block"
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-muted/30 to-muted/10 border-2 border-dashed border-border/40 rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-4 backdrop-blur-sm">
@@ -426,7 +492,15 @@ export const Preview = memo(
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
-          style={{ display: 'none' }}
+          playsInline
+          style={{ 
+            position: 'absolute', 
+            width: videoDimensions.width || 'auto', 
+            height: videoDimensions.height || 'auto', 
+            opacity: 0, 
+            pointerEvents: 'none', 
+            zIndex: -10 
+          }}
         />
         {audioUrl && (
           <audio
@@ -443,7 +517,14 @@ export const Preview = memo(
             muted
             playsInline
             onLoadedMetadata={handleWebcamLoadedMetadata}
-            style={{ display: 'none' }}
+            style={{ 
+              position: 'absolute', 
+              width: 320, 
+              height: 180, 
+              opacity: 0, 
+              pointerEvents: 'none', 
+              zIndex: -10 
+            }}
           />
         )}
 

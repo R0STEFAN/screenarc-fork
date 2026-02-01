@@ -7,7 +7,7 @@ type Rect = { x: number; y: number; width: number; height: number }
 
 
 
-function getWebcamRectForPosition(
+export function getWebcamRectForPosition(
   pos: WebcamPosition['pos'],
   width: number,
   height: number,
@@ -46,7 +46,7 @@ function lerp(start: number, end: number, t: number): number {
 /**
  * Draws the background with optimized rendering
  */
-const drawBackground = async (
+export const drawBackground = async (
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -117,8 +117,15 @@ const drawBackground = async (
     }
     case 'image':
     case 'wallpaper': {
-      if (preloadedImage && preloadedImage.complete) {
+      const hasValidImage =
+        !!preloadedImage &&
+        preloadedImage.complete &&
+        preloadedImage.naturalWidth > 0 &&
+        preloadedImage.naturalHeight > 0
+
+      if (hasValidImage) {
         const img = preloadedImage
+        
         const imgRatio = img.width / img.height
         const canvasRatio = width / height
         let sx, sy, sWidth, sHeight
@@ -134,15 +141,21 @@ const drawBackground = async (
           sx = 0
           sy = (img.height - sHeight) / 2
         }
+        
+        // Ensure no floating point artifacts
+        ctx.fillStyle = '#111' // Fallback dark color behind image
+        ctx.fillRect(0, 0, width, height)
+        
         ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, width, height)
       } else {
-        ctx.fillStyle = 'oklch(0.2077 0.0398 265.7549)'
+        const fallbackColor = backgroundState.color || '#111111'
+        ctx.fillStyle = fallbackColor
         ctx.fillRect(0, 0, width, height)
       }
       break
     }
     default:
-      ctx.fillStyle = 'oklch(0.2077 0.0398 265.7549)'
+      ctx.fillStyle = '#111111'
       ctx.fillRect(0, 0, width, height)
   }
 }

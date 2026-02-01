@@ -100,17 +100,31 @@ app.whenReady().then(async () => {
   protocol.registerFileProtocol(
     'media',
     (request: ProtocolRequest, callback: (response: string | ProtocolResponse) => void) => {
-      const url = request.url.replace('media://', '')
-      const decodedUrl = decodeURIComponent(url)
+      let url = request.url.replace('media://', '')
+      let decodedUrl = decodeURIComponent(url)
+      
+      // Handle Windows drives (e.g., /C:/Users... => C:/Users...)
+      if (process.platform === 'win32' && decodedUrl.startsWith('/') && decodedUrl.includes(':')) {
+         decodedUrl = decodedUrl.substring(1)
+      }
+
       const resourcePath = path.join(VITE_PUBLIC, decodedUrl)
 
+      // Add CORS headers to local file response
+      const headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
+        'Access-Control-Allow-Methods': 'GET',
+      }
+
       if (path.isAbsolute(decodedUrl) && fsSync.existsSync(decodedUrl)) {
-        return callback(decodedUrl)
+        return callback({ path: decodedUrl, headers })
       }
       if (fsSync.existsSync(resourcePath)) {
-        return callback(resourcePath)
+        return callback({ path: resourcePath, headers })
       }
-      log.error(`[Protocol] Could not find file: ${decodedUrl}`)
+      
+      log.error(`[Protocol] Could not find file: ${decodedUrl} (from ${request.url})`)
       return callback({ error: -6 }) // FILE_NOT_FOUND
     },
   )

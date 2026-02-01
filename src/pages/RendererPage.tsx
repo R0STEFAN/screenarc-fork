@@ -4,7 +4,7 @@ import { useEditorStore } from '../store/editorStore'
 import { EditorState, EditorActions, CursorTheme, CursorFrame, CursorImageBitmap } from '../types'
 import { ExportSettings } from '../components/editor/ExportModal'
 import { RESOLUTIONS } from '../lib/constants'
-import { drawScene } from '../lib/renderer'
+import { PixiRenderer } from '../lib/renderer-gl'
 import { prepareCursorBitmaps, mapExportTimeToSourceTime } from '../lib/utils'
 
 type RenderStartPayload = {
@@ -368,8 +368,9 @@ export function RendererPage() {
 
         canvas.width = outputWidth
         canvas.height = outputHeight
-        const ctx = canvas.getContext('2d', { alpha: false })
-        if (!ctx) throw new Error('Failed to get 2D context from canvas.')
+        // const ctx = canvas.getContext('2d', { alpha: false })
+        // if (!ctx) throw new Error('Failed to get 2D context from canvas.')
+        const pixiRenderer = new PixiRenderer({ canvas, width: outputWidth, height: outputHeight })
 
         // --- 2. PREPARE STATE AND ASSETS ---
         useEditorStore.setState(projectState)
@@ -580,9 +581,7 @@ export function RendererPage() {
                 height: (webcamFrame as any).displayHeight || (webcamFrame as any).codedHeight,
               }
             : undefined
-
-          await drawScene(
-            ctx,
+          await pixiRenderer.render(
             projectStateWithCursorBitmaps,
             mainFrame,
             webcamFrameToUse,
@@ -602,8 +601,12 @@ export function RendererPage() {
             vFrame.close()
           } else {
             // Send the rendered frame to the main process
-            const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
-            const frameBuffer = Buffer.from(imageData.data.buffer)
+            // const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight)
+            // const frameBuffer = Buffer.from(imageData.data.buffer)
+            const extraction = pixiRenderer.app.renderer.extract.pixels(pixiRenderer.app.stage)
+            const pixels = (extraction as any).pixels || extraction
+            const frameBuffer = Buffer.from(pixels.buffer)
+
             const progress = Math.min(99, ((frame + 1) / totalFrames) * 100)
             window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress })
           }
@@ -617,6 +620,7 @@ export function RendererPage() {
         // --- 6. FINISH ---
         log.info('[RendererPage] Render loop finished. Sending "finishRender" signal.')
         window.electronAPI.finishRender()
+        pixiRenderer.destroy()
         if (frameProvider) frameProvider.close()
         if (webcamFrameProvider) webcamFrameProvider.close()
       } catch (error) {
